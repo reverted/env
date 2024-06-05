@@ -41,7 +41,12 @@ func Parse(obj interface{}) error {
 		}
 
 		value := os.Getenv(tag.Env)
-		if !tag.Optional && value == "" {
+
+		if value == "" {
+			value = tag.Default
+		}
+
+		if value == "" && !tag.Optional {
 			return fmt.Errorf("missing required env : %s", tag.Env)
 		}
 
@@ -54,7 +59,10 @@ func Parse(obj interface{}) error {
 			vField.SetString(value)
 
 		case reflect.Int:
-			parsed, _ := strconv.ParseInt(value, 10, 64)
+			parsed, err := strconv.ParseInt(value, 10, 64)
+			if err != nil {
+				return fmt.Errorf("error parsing int field '%s' : %w", tField.Name, err)
+			}
 			vField.SetInt(parsed)
 
 		}
@@ -66,6 +74,7 @@ func Parse(obj interface{}) error {
 type Tag struct {
 	Env      string
 	Optional bool
+	Default  string
 }
 
 func parseTag(tag reflect.StructTag) (Tag, bool, error) {
@@ -79,15 +88,25 @@ func parseTag(tag reflect.StructTag) (Tag, bool, error) {
 		return Tag{}, false, fmt.Errorf("empty tag '%s'", TagName)
 	}
 
-	var optional bool
+	var opt bool
+	var def string
 	for _, value := range parts[1:] {
-		if value == "optional" {
-			optional = true
+		switch {
+		case value == "optional":
+			opt = true
+
+		case strings.HasPrefix(value, "default"):
+			defParts := strings.SplitN(value, "=", 2)
+			if len(defParts) != 2 {
+				return Tag{}, false, fmt.Errorf("invalid use of default in tag '%s', expected 'default=value', found '%s'", TagName, value)
+			}
+			def = defParts[1]
 		}
 	}
 
 	return Tag{
 		Env:      parts[0],
-		Optional: optional,
+		Optional: opt,
+		Default:  def,
 	}, true, nil
 }
