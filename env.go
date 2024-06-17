@@ -52,7 +52,10 @@ func Parse(obj interface{}) error {
 
 		switch vField.Kind() {
 		case reflect.Slice:
-			values := strings.Split(value, ",")
+			values, err := parseSlice(value, vField.Type().Elem())
+			if err != nil {
+				return fmt.Errorf("error parsing slice field '%s' : %w", tField.Name, err)
+			}
 			vField.Set(reflect.ValueOf(values))
 
 		case reflect.String:
@@ -69,6 +72,26 @@ func Parse(obj interface{}) error {
 	}
 
 	return nil
+}
+
+func parseSlice(value string, elemType reflect.Type) (interface{}, error) {
+	switch elemType.Kind() {
+	case reflect.String:
+		return strings.Split(value, ","), nil
+
+	case reflect.Int:
+		values := strings.Split(value, ",")
+		res := make([]int, len(values))
+		for i, v := range values {
+			var err error
+			if res[i], err = strconv.Atoi(v); err != nil {
+				return nil, fmt.Errorf("error parsing int slice : %w", err)
+			}
+		}
+		return res, nil
+	}
+
+	return nil, fmt.Errorf("unsupported slice type '%s'", elemType.Kind())
 }
 
 type Tag struct {
