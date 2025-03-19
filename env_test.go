@@ -204,38 +204,38 @@ func TestParseTag(t *testing.T) {
 	tests := []struct {
 		name        string
 		tag         reflect.StructTag
-		expected    Tag
+		expected    tag
 		expectedOk  bool
 		expectError bool
 	}{
 		{
 			name:       "basic tag",
 			tag:        `env:"APP_NAME"`,
-			expected:   Tag{Env: "APP_NAME", Optional: false, Default: ""},
+			expected:   tag{Env: "APP_NAME", Optional: false, Default: ""},
 			expectedOk: true,
 		},
 		{
 			name:       "optional tag",
 			tag:        `env:"APP_NAME,optional"`,
-			expected:   Tag{Env: "APP_NAME", Optional: true, Default: ""},
+			expected:   tag{Env: "APP_NAME", Optional: true, Default: ""},
 			expectedOk: true,
 		},
 		{
 			name:       "default tag",
 			tag:        `env:"APP_NAME,default=test"`,
-			expected:   Tag{Env: "APP_NAME", Optional: false, Default: "test"},
+			expected:   tag{Env: "APP_NAME", Optional: false, Default: "test"},
 			expectedOk: true,
 		},
 		{
 			name:       "combined options",
 			tag:        `env:"APP_NAME,optional,default=test"`,
-			expected:   Tag{Env: "APP_NAME", Optional: true, Default: "test"},
+			expected:   tag{Env: "APP_NAME", Optional: true, Default: "test"},
 			expectedOk: true,
 		},
 		{
 			name:       "no tag",
 			tag:        `json:"name"`,
-			expected:   Tag{},
+			expected:   tag{},
 			expectedOk: false,
 		},
 		{

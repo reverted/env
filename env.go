@@ -9,8 +9,8 @@ import (
 	"strings"
 )
 
-// Tag represents the parsed `env` tag
-type Tag struct {
+// tag represents the parsed `env` tag
+type tag struct {
 	Env      string
 	Optional bool
 	Default  string
@@ -86,22 +86,22 @@ func parseStruct(rv reflect.Value) error {
 	return nil
 }
 
-// parseTag parses the struct tag to extract environment variable configuration
-func parseTag(tag reflect.StructTag) (Tag, bool, error) {
-	envTag, ok := tag.Lookup("env")
+// parsetag parses the struct tag to extract environment variable configuration
+func parseTag(t reflect.StructTag) (tag, bool, error) {
+	envtag, ok := t.Lookup("env")
 	if !ok {
-		return Tag{}, false, nil
+		return tag{}, false, nil
 	}
-	if envTag == "" {
-		return Tag{}, false, errors.New("env tag must not be empty")
+	if envtag == "" {
+		return tag{}, false, errors.New("env tag must not be empty")
 	}
 
-	parts := strings.Split(envTag, ",")
+	parts := strings.Split(envtag, ",")
 	if parts[0] == "" {
-		return Tag{}, false, errors.New("env tag must have a name")
+		return tag{}, false, errors.New("env tag must have a name")
 	}
 
-	result := Tag{
+	result := tag{
 		Env: parts[0],
 	}
 
@@ -110,14 +110,14 @@ func parseTag(tag reflect.StructTag) (Tag, bool, error) {
 			result.Optional = true
 		} else if part == "default" {
 			// Special handling for "default" without a value
-			return Tag{}, false, errors.New("default tag must have a value")
+			return tag{}, false, errors.New("default tag must have a value")
 		} else if strings.HasPrefix(part, "default=") {
 			if len(part) <= 8 { // 8 is len("default=")
-				return Tag{}, false, errors.New("default tag must have a value")
+				return tag{}, false, errors.New("default tag must have a value")
 			}
 			result.Default = part[8:]
 		} else {
-			return Tag{}, false, fmt.Errorf("unknown tag option: %s", part)
+			return tag{}, false, fmt.Errorf("unknown tag option: %s", part)
 		}
 	}
 
