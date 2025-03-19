@@ -107,7 +107,7 @@ func parseTag(tag reflect.StructTag) (Tag, bool, error) {
 	}
 
 	parts := strings.Split(raw, ",")
-	if len(parts) == 0 {
+	if len(parts) == 0 || parts[0] == "" {
 		return Tag{}, false, fmt.Errorf("empty tag '%s'", TagName)
 	}
 
