@@ -1,7 +1,6 @@
 package env
 
 import (
-	"os"
 	"reflect"
 	"testing"
 )
@@ -182,8 +181,7 @@ func TestParse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Set environment variables
 			for k, v := range tt.envVars {
-				os.Setenv(k, v)
-				defer os.Unsetenv(k)
+				t.Setenv(k, v)
 			}
 
 			// Run Parse
@@ -318,6 +316,197 @@ func TestParseSlice(t *testing.T) {
 
 			if !tt.expectError && !reflect.DeepEqual(result, tt.expected) {
 				t.Errorf("parseSlice() result = %v, expected %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestNestedStructs(t *testing.T) {
+	tests := []struct {
+		name        string
+		envVars     map[string]string
+		input       any
+		expected    any
+		expectError bool
+	}{
+		{
+			name: "basic nested struct",
+			envVars: map[string]string{
+				"DB_HOST":  "localhost",
+				"DB_PORT":  "5432",
+				"APP_NAME": "test-app",
+			},
+			input: &struct {
+				AppName  string `env:"APP_NAME"`
+				Database struct {
+					Host string `env:"DB_HOST"`
+					Port int    `env:"DB_PORT"`
+				}
+			}{},
+			expected: &struct {
+				AppName  string `env:"APP_NAME"`
+				Database struct {
+					Host string `env:"DB_HOST"`
+					Port int    `env:"DB_PORT"`
+				}
+			}{
+				AppName: "test-app",
+				Database: struct {
+					Host string `env:"DB_HOST"`
+					Port int    `env:"DB_PORT"`
+				}{
+					Host: "localhost",
+					Port: 5432,
+				},
+			},
+		},
+		{
+			name: "embedded struct",
+			envVars: map[string]string{
+				"NAME": "test-app",
+				"PORT": "8080",
+			},
+			input: &struct {
+				X struct {
+					Name string `env:"NAME"`
+				}
+				Port int `env:"PORT"`
+			}{},
+			expected: &struct {
+				X struct {
+					Name string `env:"NAME"`
+				}
+				Port int `env:"PORT"`
+			}{
+				X: struct {
+					Name string `env:"NAME"`
+				}{
+					Name: "test-app",
+				},
+				Port: 8080,
+			},
+		},
+		{
+			name: "multiple levels of nesting",
+			envVars: map[string]string{
+				"API_URL":   "https://api.example.com",
+				"DB_HOST":   "localhost",
+				"DB_PORT":   "5432",
+				"CACHE_TTL": "300",
+			},
+			input: &struct {
+				API struct {
+					URL      string `env:"API_URL"`
+					Database struct {
+						Host string `env:"DB_HOST"`
+						Port int    `env:"DB_PORT"`
+					}
+				}
+				Cache struct {
+					TTL int `env:"CACHE_TTL"`
+				}
+			}{},
+			expected: &struct {
+				API struct {
+					URL      string `env:"API_URL"`
+					Database struct {
+						Host string `env:"DB_HOST"`
+						Port int    `env:"DB_PORT"`
+					}
+				}
+				Cache struct {
+					TTL int `env:"CACHE_TTL"`
+				}
+			}{
+				API: struct {
+					URL      string `env:"API_URL"`
+					Database struct {
+						Host string `env:"DB_HOST"`
+						Port int    `env:"DB_PORT"`
+					}
+				}{
+					URL: "https://api.example.com",
+					Database: struct {
+						Host string `env:"DB_HOST"`
+						Port int    `env:"DB_PORT"`
+					}{
+						Host: "localhost",
+						Port: 5432,
+					},
+				},
+				Cache: struct {
+					TTL int `env:"CACHE_TTL"`
+				}{
+					TTL: 300,
+				},
+			},
+		},
+		{
+			name: "nested struct with error",
+			envVars: map[string]string{
+				"DB_HOST": "localhost",
+				// Missing required DB_PORT
+			},
+			input: &struct {
+				Database struct {
+					Host string `env:"DB_HOST"`
+					Port int    `env:"DB_PORT"` // Required field
+				}
+			}{},
+			expectError: true,
+		},
+		{
+			name: "pointer to nested struct",
+			envVars: map[string]string{
+				"DB_HOST": "localhost",
+				"DB_PORT": "5432",
+			},
+			input: &struct {
+				Database *struct {
+					Host string `env:"DB_HOST"`
+					Port int    `env:"DB_PORT"`
+				}
+			}{
+				Database: &struct {
+					Host string `env:"DB_HOST"`
+					Port int    `env:"DB_PORT"`
+				}{},
+			},
+			expected: &struct {
+				Database *struct {
+					Host string `env:"DB_HOST"`
+					Port int    `env:"DB_PORT"`
+				}
+			}{
+				Database: &struct {
+					Host string `env:"DB_HOST"`
+					Port int    `env:"DB_PORT"`
+				}{
+					Host: "localhost",
+					Port: 5432,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set environment variables
+			for k, v := range tt.envVars {
+				t.Setenv(k, v)
+			}
+
+			// Run Parse
+			err := Parse(tt.input)
+
+			// Check error
+			if (err != nil) != tt.expectError {
+				t.Errorf("Parse() error = %v, expectError %v", err, tt.expectError)
+				return
+			}
+
+			if !tt.expectError && !reflect.DeepEqual(tt.input, tt.expected) {
+				t.Errorf("Parse() got = %v, want %v", tt.input, tt.expected)
 			}
 		})
 	}
