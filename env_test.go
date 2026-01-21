@@ -511,3 +511,135 @@ func TestNestedStructs(t *testing.T) {
 		})
 	}
 }
+
+func TestPatternMatching(t *testing.T) {
+	tests := []struct {
+		name        string
+		envVars     map[string]string
+		input       any
+		expected    any
+		expectError bool
+	}{
+		{
+			name: "pattern matching with * wildcard",
+			envVars: map[string]string{
+				"KYE_AUTH_TOKEN_EXT_1": "token1",
+				"KYE_AUTH_TOKEN_EXT_2": "token2",
+				"KYE_AUTH_TOKEN_EXT_3": "token3",
+			},
+			input: &struct {
+				AuthTokensExt []string `env:"KYE_AUTH_TOKEN_EXT_*,pattern"`
+			}{},
+			expected: &struct {
+				AuthTokensExt []string `env:"KYE_AUTH_TOKEN_EXT_*,pattern"`
+			}{
+				AuthTokensExt: []string{"token1", "token2", "token3"},
+			},
+		},
+		{
+			name:    "pattern matching with optional",
+			envVars: map[string]string{},
+			input: &struct {
+				AuthTokensExt []string `env:"KYE_AUTH_TOKEN_EXT_*,optional,pattern"`
+			}{},
+			expected: &struct {
+				AuthTokensExt []string `env:"KYE_AUTH_TOKEN_EXT_*,optional,pattern"`
+			}{
+				AuthTokensExt: nil,
+			},
+		},
+		{
+			name: "pattern matching prefix only",
+			envVars: map[string]string{
+				"API_KEY_1":    "key1",
+				"API_KEY_2":    "key2",
+				"API_KEY_PROD": "prod-key",
+				"OTHER_KEY":    "other",
+			},
+			input: &struct {
+				APIKeys []string `env:"API_KEY_*,pattern"`
+			}{},
+			expected: &struct {
+				APIKeys []string `env:"API_KEY_*,pattern"`
+			}{
+				APIKeys: []string{"key1", "key2", "prod-key"},
+			},
+		},
+		{
+			name: "pattern matching with no matches",
+			envVars: map[string]string{
+				"SOME_OTHER_VAR": "value",
+			},
+			input: &struct {
+				MissingPattern []string `env:"DOES_NOT_EXIST_*,pattern"`
+			}{},
+			expectError: true,
+		},
+		{
+			name: "pattern matching on non-slice field",
+			envVars: map[string]string{
+				"VAR_1": "value1",
+			},
+			input: &struct {
+				InvalidPattern string `env:"VAR_*,pattern"`
+			}{},
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set environment variables
+			for k, v := range tt.envVars {
+				t.Setenv(k, v)
+			}
+
+			// Run Parse
+			err := Parse(tt.input)
+
+			// Check error
+			if (err != nil) != tt.expectError {
+				t.Errorf("Parse() error = %v, expectError %v", err, tt.expectError)
+				return
+			}
+
+			if !tt.expectError {
+				// For pattern matching, we can't use DeepEqual directly because
+				// the order of matches may vary. Instead, check if all expected
+				// values are present
+				inputVal := reflect.ValueOf(tt.input).Elem()
+				expectedVal := reflect.ValueOf(tt.expected).Elem()
+
+				for i := 0; i < inputVal.NumField(); i++ {
+					inputField := inputVal.Field(i)
+					expectedField := expectedVal.Field(i)
+
+					if inputField.Kind() == reflect.Slice {
+						if inputField.Len() != expectedField.Len() {
+							t.Errorf("Field slice length got = %d, want %d", inputField.Len(), expectedField.Len())
+							continue
+						}
+
+						// Create maps for easier comparison
+						inputMap := make(map[string]bool)
+						expectedMap := make(map[string]bool)
+
+						for j := 0; j < inputField.Len(); j++ {
+							inputMap[inputField.Index(j).String()] = true
+						}
+
+						for j := 0; j < expectedField.Len(); j++ {
+							expectedMap[expectedField.Index(j).String()] = true
+						}
+
+						if !reflect.DeepEqual(inputMap, expectedMap) {
+							t.Errorf("Field got = %v, want %v", inputField.Interface(), expectedField.Interface())
+						}
+					} else if !reflect.DeepEqual(inputField.Interface(), expectedField.Interface()) {
+						t.Errorf("Field got = %v, want %v", inputField.Interface(), expectedField.Interface())
+					}
+				}
+			}
+		})
+	}
+}

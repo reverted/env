@@ -14,6 +14,7 @@ type tag struct {
 	Env      string
 	Optional bool
 	Default  string
+	Pattern  bool
 }
 
 // Parse populates a struct with values from environment variables based on struct tags
@@ -66,6 +67,19 @@ func parseStruct(rv reflect.Value) error {
 			continue // Field doesn't have an env tag, skip it
 		}
 
+		// Handle pattern matching for slice fields
+		if tag.Pattern {
+			if field.Type.Kind() != reflect.Slice {
+				return fmt.Errorf("pattern matching is only supported for slice fields: %s", field.Name)
+			}
+			if err := setPatternField(fieldValue, tag.Env); err != nil {
+				if !tag.Optional {
+					return fmt.Errorf("failed to set pattern field %s: %w", field.Name, err)
+				}
+			}
+			continue
+		}
+
 		value, exists := os.LookupEnv(tag.Env)
 		if !exists {
 			if tag.Optional {
@@ -108,6 +122,8 @@ func parseTag(t reflect.StructTag) (tag, bool, error) {
 	for _, part := range parts[1:] {
 		if part == "optional" {
 			result.Optional = true
+		} else if part == "pattern" {
+			result.Pattern = true
 		} else if part == "default" {
 			// Special handling for "default" without a value
 			return tag{}, false, errors.New("default tag must have a value")
@@ -187,4 +203,70 @@ func parseSlice(value string, elemType reflect.Type) (interface{}, error) {
 	default:
 		return nil, fmt.Errorf("unsupported slice element type %s", elemType.String())
 	}
+}
+
+// setPatternField sets field value by matching environment variables with a pattern
+func setPatternField(field reflect.Value, pattern string) error {
+	if !field.CanSet() {
+		return fmt.Errorf("cannot set field value")
+	}
+
+	if field.Kind() != reflect.Slice {
+		return fmt.Errorf("pattern matching is only supported for slice fields")
+	}
+
+	// Only support string slices for pattern matching
+	if field.Type().Elem().Kind() != reflect.String {
+		return fmt.Errorf("pattern matching is only supported for []string fields")
+	}
+
+	// Convert pattern to a matcher (supports * wildcard)
+	matches := matchEnvVars(pattern)
+
+	if len(matches) == 0 {
+		return fmt.Errorf("no environment variables match pattern %s", pattern)
+	}
+
+	field.Set(reflect.ValueOf(matches))
+	return nil
+}
+
+// matchEnvVars finds all environment variables matching the given pattern
+func matchEnvVars(pattern string) []string {
+	var matches []string
+
+	// Convert pattern to regex-like matching
+	// For now, we support * as a wildcard
+	if !strings.Contains(pattern, "*") {
+		// No wildcard, just check for exact match
+		if val, exists := os.LookupEnv(pattern); exists {
+			matches = append(matches, val)
+		}
+		return matches
+	}
+
+	// Split pattern by * to get prefix and suffix
+	prefix := ""
+	suffix := ""
+
+	if idx := strings.Index(pattern, "*"); idx >= 0 {
+		prefix = pattern[:idx]
+		suffix = pattern[idx+1:]
+	}
+
+	// Get all environment variables
+	for _, env := range os.Environ() {
+		// Split on first =
+		if idx := strings.Index(env, "="); idx > 0 {
+			key := env[:idx]
+			value := env[idx+1:]
+
+			// Check if key matches pattern
+			if strings.HasPrefix(key, prefix) && strings.HasSuffix(key, suffix) {
+				matches = append(matches, value)
+			}
+		}
+	}
+
+	return matches
 }
